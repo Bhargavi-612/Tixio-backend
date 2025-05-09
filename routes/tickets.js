@@ -1,6 +1,7 @@
 import express from 'express';
 import Ticket from '../models/Ticket.js';
 import { classifyAndSummarizeEmail } from '../utils/openrouter.js';
+import nodemailer from 'nodemailer';
 
 const router = express.Router();
 
@@ -137,6 +138,40 @@ router.get('/analytics', async (req, res) => {
         res.status(500).json({ error: "Failed to fetch analytics" });
     }
 });
+
+router.post('/:id/reply', async (req, res) => {
+  try {
+    const { message } = req.body;
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    // Send mail
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.REPLY_EMAIL,
+        pass: process.env.REPLY_EMAIL_PASSWORD,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.REPLY_EMAIL,
+      to: ticket.sender,
+      subject: `Re: ${ticket.subject}`,
+      text: message,
+    });
+
+    // Save reply to DB
+    ticket.reply = message;
+    await ticket.save();
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Reply error:', err);
+    res.status(500).json({ error: 'Failed to send reply' });
+  }
+});
+
   
 
 export default router;
