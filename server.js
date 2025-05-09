@@ -11,6 +11,7 @@ import fetchEmails from './utils/fetchEmails.js';
 
 import Ticket from './models/Ticket.js';
 import { classifyAndSummarizeEmail } from './utils/openrouter.js';
+import { getEmbedding } from './utils/embeddings.js';
 
 dotenv.config()
 
@@ -35,6 +36,13 @@ mongoose.connect(process.env.MONGO_URI, {
 })
 .catch(err => console.error(err))
 
+function cosineSimilarity(a, b) {
+  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+  const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+  const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+  return dotProduct / (normA * normB);
+}
+
 // Cron job to run every 5 minutes (adjust as needed)
 cron.schedule('*/1 * * * *', async () => {
     console.log('Fetching unread emails...');
@@ -48,6 +56,36 @@ cron.schedule('*/1 * * * *', async () => {
       for (const { sender, body } of emails){
         try{
             const llmData = await classifyAndSummarizeEmail(body);
+            const { team, priority, subject, summary } = llmData;
+
+            // Step 2: Generate embedding from summary
+            const vector1 = await getEmbedding([body]);
+            const vector = Array.from(vector1);
+            console.log(vector);
+
+            // Step 3: Search for similar summaries within last 24h
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+            const similarTickets = await Ticket.aggregate([
+              {
+                $vectorSearch: {
+                  index: 'Ticket_Embeddings',
+                  queryVector: vector,
+                  path: 'vector',
+                  numCandidates: 100,
+                  limit: 3
+                }
+              }
+            ]);
+
+            const threshold = 0.95;
+            const similarDocs = similarTickets.filter(doc => cosineSimilarity(vector, doc.vector) > threshold);
+
+            if (similarDocs.length > 0) {
+              console.log(similarDocs);
+              console.log('Duplicate ticket detected. Skipping creation.');
+              continue;
+            }
         
             const newTicket = new Ticket({
             sender,
@@ -58,6 +96,7 @@ cron.schedule('*/1 * * * *', async () => {
             summary: llmData.summary,
             status: 'open',
             createdAt: new Date(),
+            vector
             });
         
             const savedTicket = await newTicket.save();

@@ -14,7 +14,8 @@ const ticketSchema = new mongoose.Schema({
   status: { type: String, enum: ['open', 'closed', 'spam'], default: 'open' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
-  reply: { type: String , default: '' }
+  reply: { type: String , default: '' },
+  vector: { type: [Number], default: [] }
 });
 
 const Ticket = mongoose.model('Ticket', ticketSchema);
