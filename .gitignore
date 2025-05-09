@@ -4,3 +4,5 @@ token.json
 credentials.json
 seedUsers.js
 testEmbeddings.js
+testFetchEmails.js
+testLLM.js
