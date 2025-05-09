@@ -6,3 +6,4 @@ seedUsers.js
 testEmbeddings.js
 testFetchEmails.js
 testLLM.js
+/tests
