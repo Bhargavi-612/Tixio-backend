@@ -2,6 +2,7 @@ import express from 'express';
 import Ticket from '../models/Ticket.js';
 import { classifyAndSummarizeEmail } from '../utils/openrouter.js';
 import nodemailer from 'nodemailer';
+import { getEmbedding } from '../utils/embeddings.js';
 
 const router = express.Router();
 
@@ -172,6 +173,58 @@ router.post('/:id/reply', async (req, res) => {
   }
 });
 
+router.post('/search-similar', async (req, res) => {
+  const { query } = req.body;
+  
+  if (!query) {
+  return res.status(400).json({ error: 'Query text is required' });
+  }
+  
+  try {
+  // Step 1: Generate embedding for the user query
+  const embedding = await getEmbedding([query]);
+  const vector = Array.from(embedding);
+
+  
+  // Step 2: Perform vector search in the Ticket collection
+  const similarTickets = await Ticket.aggregate([
+    {
+      $vectorSearch: {
+        index: 'Ticket_Embeddings',
+        queryVector: vector,
+        path: 'vector',
+        numCandidates: 100,
+        limit: 3
+      }
+    },
+    {
+      $project: {
+        summary: 1,
+        subject: 1,
+        reply: 1,
+        similarityScore: { $meta: 'vectorSearchScore' }
+      }
+    }
+  ]);
+  
+  // return res.status(200).json({ results: similarTickets });
+  console.log(similarTickets);
+
+// Return the similar tickets including replies
+return res.status(200).json({
+  results: similarTickets.map(ticket => ({
+    subject: ticket.subject,
+    summary: ticket.summary,
+    reply: ticket.reply,
+    similarityScore: ticket.similarityScore
+  }))
+});
+  
+  } catch (error) {
+  console.error('Error fetching similar tickets:', error);
+  return res.status(500).json({ error: 'Internal server error' });
+  }
+  });
   
 
 export default router;
